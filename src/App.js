@@ -1,6 +1,5 @@
 import React, { Component } from "react";
 import "./App.css";
-import Clarifai from "clarifai";
 import SignIn from "./components/signin/SignIn";
 import Register from "./components/register/Register";
 import Navigation from "./components/navigation/Navigation.js";
@@ -11,9 +10,6 @@ import FaceRecognition from "./components/facerecognition/FaceRecognition.js";
 import Particles from "react-tsparticles";
 import { loadFull } from "tsparticles";
 
-const app = new Clarifai.App({
-  apiKey: "c2db2efb821940989b7f1f4f490c8830",
-});
 
 const particlesOptions = {
   fpsLimit: 120,
@@ -90,6 +86,21 @@ const particlesInit = async (main) => {
   await loadFull(main);
 };
 
+const initialState = {
+  input: "",
+  imageUrl: "",
+  box: {},
+  route: "signin",
+  isSignedIn: false,
+  user: {
+    id: "",
+    name: "",
+    email: "",
+    entries: 0,
+    joined: "",
+  }
+}
+
 class App extends Component {
   constructor() {
     super();
@@ -98,8 +109,33 @@ class App extends Component {
       imageUrl: "",
       box: {},
       route: "signin",
-      isSignedIn: false
+      isSignedIn: false,
+      user: {
+        id: "",
+        name: "",
+        email: "",
+        entries: 0,
+        joined: "",
+      },
     };
+  }
+
+  loadUser = (data) => {
+    this.setState({
+      user: {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        entries: data.entries,
+        joined: data.joined,
+      },
+    });
+  };
+
+  componentDidMount() {
+    fetch("https://desolate-lake-05930.herokuapp.com")
+      .then((response) => response.json())
+      .then((data) => console.log(data));
   }
 
   calculateFaceLocation = (data) => {
@@ -124,27 +160,51 @@ class App extends Component {
     this.setState({ input: event.target.value });
   };
 
-  onButtonSubmit = () => {
+  onPictureSubmit = () => {
     this.setState({ imageUrl: this.state.input });
-    app.models
-      .predict(Clarifai.FACE_DETECT_MODEL, this.state.input)
-      .then((response) =>
-        this.displayFaceBox(this.calculateFaceLocation(response))
-      )
+    fetch('https://desolate-lake-05930.herokuapp.com/imageurl', {
+      method: 'post',
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: this.state.input
+      }),
+    })
+      .then(response => response.json())
+      .then(response => {
+        if (response) {
+          fetch('https://desolate-lake-05930.herokuapp.com/image', {
+            method: 'put',
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: this.state.user.id
+            }),
+          })
+            .then(response => response.json())
+            .then(count => {
+              this.setState(Object.assign(this.state.user, { entries: count }))
+            })
+            .catch(console.log)
+        }
+        this.displayFaceBox(this.calculateFaceLocation(response));
+      })
       .catch((err) => console.log(err));
   };
 
   onRouteChange = (route) => {
-    if (route === 'signout') {
-      this.setState({isSignedIn: false })
-    } else if (route === 'home') {
-      this.setState({isSignedIn: true })
+    if (route === "signout") {
+      this.setState(initialState);
+    } else if (route === "home") {
+      this.setState({ isSignedIn: true });
     }
-    this.setState({route: route})
-  }
+    this.setState({ route: route });
+  };
 
   render() {
-    const { imageUrl, box, route, isSignedIn } = this.state
+    const { imageUrl, box, route, isSignedIn, user } = this.state;
     return (
       <div className="App">
         <Particles
@@ -153,25 +213,28 @@ class App extends Component {
           init={particlesInit}
           options={particlesOptions}
         />
-        <Navigation isSignedIn={isSignedIn} onRouteChange={this.onRouteChange} />
+        <Navigation
+          isSignedIn={isSignedIn}
+          onRouteChange={this.onRouteChange}
+        />
 
         {route === "home" ? (
           <div>
-          <Logo />
-          <Rank />
-          <ImageLinkForm
-            onInputChange={this.onInputChange}
-            onButtonSubmit={this.onButtonSubmit}
-          />
-          <FaceRecognition
-            box={box}
-            imageUrl={imageUrl}
-          />
-        </div>
+            <Logo />
+            <Rank name={user.name} entries={user.entries} />
+            <ImageLinkForm
+              onInputChange={this.onInputChange}
+              onPictureSubmit={this.onPictureSubmit}
+            />
+            <FaceRecognition box={box} imageUrl={imageUrl} />
+          </div>
+        ) : route === "signin" ? (
+          <SignIn onRouteChange={this.onRouteChange} loadUser={this.loadUser} />
         ) : (
-          route === 'signin' ? 
-          <SignIn onRouteChange={this.onRouteChange} /> :
-          <Register onRouteChange={this.onRouteChange} />
+          <Register
+            onRouteChange={this.onRouteChange}
+            loadUser={this.loadUser}
+          />
         )}
       </div>
     );
